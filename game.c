@@ -1,101 +1,73 @@
 // Libraries
-#include <stdio.h>
-#include <stdlib.h>
 #include <raylib.h>
 
 // Hint: To run every line, just press F6 (on Notepad++) or F5 (on VS Code) (if you're using another solution, idk)
 
-//------------------------------------------------------------------------------------
-// Data Structures
-struct LinkedList {
-    Vector2 pos;
-    struct LinkedList *next;
-};
-
-typedef struct LinkedList *node;
-
-node createNode(Vector2 pos) {
-    node tmp = (node) malloc( sizeof(struct LinkedList) );
-    tmp->pos = pos;
-    tmp->next = NULL;
-    return tmp;
-}
-
-node addNode(node head, Vector2 pos) {
-    node tmp, p;
-    tmp = createNode(pos);
-
-    if ( head == NULL ) {
-        head = tmp;
-        return head;
-    }
-
-    p = head;
-    while ( p->next != NULL )
-        p = p->next;
-    p->next = tmp;
-
-    return head;
-}
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
 int main(void) {
     // Initialization
     //--------------------------------------------------------------------------------
+    int gameTime = 0;
+
     const int screenWidth = 350;
     const int screenHeight = 450;
+    const int screenPaddingTB = 10;
+    const int screenPaddingLF = 14;
     
-    const int marioWidth = 25;
-    const int marioHeight = 40;
+    const int playerWidth = 60;
+    const int playerHeight = 8;
+    const int playerVelocity = 4;
 
-    char msg[100] = "Click pls";
+    const int enemyTTS = 3;    // Time To Spawn (in this case, every 3 seconds)
+    const int enemyWidth = 15;
+    const int enemyHeight = 28;
 
-    Vector2 posMario = { 0, 0 };
-    Vector2 posGoomba = {
-        GetRandomValue(marioWidth + 1, screenWidth - marioWidth),
-        GetRandomValue(marioHeight + 1, screenHeight - marioHeight)
+    Vector2 playerPos = {
+      screenWidth / 2 - playerWidth / 2,
+      screenHeight - playerHeight - screenPaddingTB
     };
-    Vector2 posGoomba2 = {
-        GetRandomValue(marioWidth + 1, screenWidth - marioWidth),
-        GetRandomValue(marioHeight + 1, screenHeight - marioHeight)
-    };
-    Vector2 posGoomba3;
-    node posGoombas = NULL;
+
+    Vector2 enemyPos = { screenPaddingLF, screenPaddingTB };
     
     InitWindow(screenWidth, screenHeight, "--- [Raylib - First Attempt] ---");
     SetTargetFPS(60);    // Set our game to run at 60 frames-per-second
     //--------------------------------------------------------------------------------
     // Main game loop
     while(!WindowShouldClose()) {    // Detect window close button or ESC key
+        //----------------------------------------------------------------------------
         // Update
-        posGoomba3 = GetMousePosition();
-        
-        if ( (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) && posMario.x < screenWidth - marioWidth )
-            posMario.x += 4;
+        int currentTime = (GetTime() / enemyTTS);
 
-        if ( (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) && posMario.x > 0 )
-            posMario.x -= 4;
-        
-        if ( (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) && posMario.y < screenHeight - marioHeight )
-            posMario.y += 4;
-        
-        if ( (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) && posMario.y > 0 )
-            posMario.y -= 4;
-        
-        if ( IsMouseButtonPressed(MOUSE_BUTTON_LEFT) ) {
-            posGoombas = addNode(posGoombas, posGoomba3);
-            sprintf(msg, "%.2f, %.2f", posGoomba3.x, posGoomba3.y);
+        if ( gameTime < currentTime ) {
+          enemyPos.x = GetRandomValue(
+            screenPaddingLF,
+            screenWidth - enemyWidth - screenPaddingLF
+          );
+
+          gameTime = currentTime;
         }
+
+        if ( (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) && playerPos.x > screenPaddingLF )
+            playerPos.x -= playerVelocity;
+
+        if ( (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) && playerPos.x < screenWidth - playerWidth - screenPaddingLF )
+            playerPos.x += playerVelocity;   
         //----------------------------------------------------------------------------
         // Draw
         BeginDrawing();
             ClearBackground(RAYWHITE);
-            DrawRectangle(posMario.x, posMario.y, marioWidth, marioHeight, RED);
-            DrawRectangle(posGoomba.x, posGoomba.y, marioWidth, marioHeight, BLUE);
-            DrawRectangle(posGoomba2.x, posGoomba2.y, marioWidth, marioHeight, ORANGE);
-            DrawRectangle(posGoomba3.x, posGoomba3.y, marioWidth, marioHeight, PINK);
-            DrawText(msg, 125, 150, 20, BLACK);
+            DrawRectangle(
+              playerPos.x, playerPos.y,
+              playerWidth, playerHeight,
+              RED
+            );
+            DrawRectangle(
+              enemyPos.x, enemyPos.y,
+              enemyWidth, enemyHeight,
+              BLUE
+            );
         EndDrawing();
         //----------------------------------------------------------------------------
     }
