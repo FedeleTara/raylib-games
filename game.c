@@ -19,8 +19,8 @@
 // Macro Definition
 //----------------------------------------------------------------------------------
 
-#define MAX_ENEMIES_ON_SCREEN 3
-#define ENEMY_BLUE_TTS 100  // Time To Spawn
+#define MAX_ENEMIES_ON_SCREEN 100
+#define ENEMY_BLUE_TTS 50  // Time To Spawn
 
 //----------------------------------------------------------------------------------
 // Enums Definition
@@ -105,7 +105,7 @@ static void PlayerActionMove(void);
 
 static void EnemyActionSpawn(EnemyType type);
 static void EnemyActionFall(int index);
-static void EnemyActionCollected(int index);
+static void EnemyActionCollect(int index);
 
 static void Init(void);
 static void GameLoop(void);
@@ -205,14 +205,18 @@ void EnemyActionFall(int index) {
     screen.size.y - screen.padding.z - enemies[index].rect.height
   )
     enemies[index].rect.y += enemies[index].velocity;
-  else
-    enemies[index].rect.y = screen.padding.x;
+  else {
+    // TODO Play animation "Rot"
+    enemies[index] = (Enemy) { 0 };
+    enemySpawned--;
+  }
 }
 
-void EnemyActionCollected(int index) {
+void EnemyActionCollect(int index) {
+  // TODO Play animation "Collect"
   enemies[index] = (Enemy) { 0 };
-  score++;
   enemySpawned--;
+  score++;
 }
 
 // Main Game Functions ---------------------------------------------------------------
@@ -253,7 +257,7 @@ void Update(void) {
 
       // Detect Collisions
       if( CheckCollisionRecs(player.rect, enemies[i].rect) )
-        EnemyActionCollected(i);
+        EnemyActionCollect(i);
 
       // Increment the counter
       j++;
