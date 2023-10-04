@@ -18,8 +18,8 @@
 //----------------------------------------------------------------------------------
 // Macro Definition
 //----------------------------------------------------------------------------------
-#define MAX_ENEMIES_ON_SCREEN 100
-#define ENEMY_BLUE_TTS 50  // Time To Spawn
+#define MAX_ENEMIES_ON_SCREEN 10
+#define ENEMY_BLUE_TTS 5  // Time To Spawn
 
 //----------------------------------------------------------------------------------
 // Enums Definition
@@ -83,8 +83,8 @@ const static char LABEL_OVERTIME[] = "OVERTIME";
 const static int SCREEN_WIDTH = 640;
 const static int SCREEN_HEIGHT = 480;
 const static int GAME_FPS = 60;
-const static int MAX_TIME = 5;
-const static int MAX_SCORE = 1;
+const static int MAX_TIME = 20;
+const static int MAX_SCORE = 30;
 
 const static int PLAYER_HEIGHT = 8;
 const static int PLAYER_WIDTH = 60;
@@ -95,7 +95,7 @@ const static double ENEMY_BLUE_TTM = 0.5;  // Time to Mode
 const static double ENEMY_BLUE_VELOCITY = 3.75;
 
 static int gameTime = 0;
-static int enemySpawned = 0;
+static int spawnedEnemies = 0;
 static int time = 0;
 static int wave = 0;
 static int score = 0;
@@ -112,7 +112,7 @@ static void PlayerActionSpawn(void);
 static void PlayerActionMove(void);
 
 static void EnemyActionSpawn(EnemyType type);
-static void EnemyActionFall(int index);
+static bool EnemyActionFall(int index);
 static void EnemyActionCollect(int index);
 
 static void ScreenInit(void);
@@ -161,16 +161,16 @@ void PlayerActionSpawn(void) {
 
 void PlayerActionMove(void) {
   if (
-    (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))
-    && player.rect.x > screen.padding.y
-  ) {
+      (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))
+      && player.rect.x > screen.padding.y
+    ) {
     player.rect.x -= player.velocity;
   }
 
   if (
-    (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT))
-    && player.rect.x < screen.size.x - player.rect.width - screen.padding.y
-  ) {
+      (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT))
+      && player.rect.x < screen.size.x - player.rect.width - screen.padding.y
+    ) {
     player.rect.x += player.velocity;
   }
 }
@@ -199,7 +199,7 @@ void EnemyActionSpawn(EnemyType type) {
   }
 }
 
-void EnemyActionFall(int index) {
+bool EnemyActionFall(int index) {
   if (
     enemies[index].rect.y <
     screen.size.y - screen.padding.z - enemies[index].rect.height
@@ -209,14 +209,15 @@ void EnemyActionFall(int index) {
   } else {
     // TODO Play animation "Rot"
     enemies[index] = (Enemy) { 0 };
-    enemySpawned--;
+    return true; // The fruit has rotten at this point
   }
+  
+  return false; // The fruit is falling yet
 }
 
 void EnemyActionCollect(int index) {
   // TODO Play animation "Collect"
   enemies[index] = (Enemy) { 0 };
-  enemySpawned--;
   score++;
 }
 
@@ -247,7 +248,7 @@ void GameOver(GameState state) {
   
   for (
     int i = 0, j = 0;
-    j < enemySpawned && i < MAX_ENEMIES_ON_SCREEN;
+    j < spawnedEnemies && i < MAX_ENEMIES_ON_SCREEN;
     i++
   ) {
     if (enemies[i].spawned) {
@@ -278,6 +279,9 @@ void GameLoop(void) {  // Main game loop
 }
 
 void Update(void) {
+  // Declarations section
+  int deSpawnedEnemies = 0;
+
   // Time section
   time = GetTime();
   if ( time >= MAX_TIME ) {
@@ -300,34 +304,42 @@ void Update(void) {
   // Enemies --------------------------------------------------------------
   for (
     int i = 0, j = 0;
-    j < enemySpawned && i < MAX_ENEMIES_ON_SCREEN;
+    j < spawnedEnemies && i < MAX_ENEMIES_ON_SCREEN;
     i++
   ) {
     if (enemies[i].spawned) {
+      // Increment the counter
+      j++;
+
       // Enemies fall
       if ( !fmod(gameTime, enemies[i].ttm) ) {
-        EnemyActionFall(i);
+        if ( EnemyActionFall(i) ) {
+          deSpawnedEnemies++;
+          continue;
+        }
       }
-      
+
       // Other actions...
       // TODO
 
       // Detect Collisions
-      if( CheckCollisionRecs(player.rect, enemies[i].rect) ) {
+      if ( CheckCollisionRecs(player.rect, enemies[i].rect) ) {
         EnemyActionCollect(i);
+        deSpawnedEnemies++;
+        continue;
       }
-
-      // Increment the counter
-      j++;
     }
   }
 
   if (  // Enemies spawn (for now, only blue rectangles :D)
-      enemySpawned < MAX_ENEMIES_ON_SCREEN && !fmod(gameTime, ENEMY_BLUE_TTS)
+      spawnedEnemies < MAX_ENEMIES_ON_SCREEN
+      && !fmod(gameTime, ENEMY_BLUE_TTS)
     ) {
       EnemyActionSpawn( BASE );
-      enemySpawned++;
+      spawnedEnemies++;
   }
+
+  spawnedEnemies -= deSpawnedEnemies;
 }
 
 void Draw(void) {
@@ -361,7 +373,7 @@ void Draw(void) {
         // Enemies --------------------------------------------------------------
         for (
           int i = 0, j = 0;
-          j < enemySpawned && i < MAX_ENEMIES_ON_SCREEN;
+          j < spawnedEnemies && i < MAX_ENEMIES_ON_SCREEN;
           i++
         ) {
           if (enemies[i].spawned) {
