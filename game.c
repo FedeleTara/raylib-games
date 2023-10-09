@@ -31,9 +31,10 @@ typedef enum {
 } EnemyType;
 
 typedef enum {
-  IN_GAME = 0,
-  OVERTIME = 1,
-  WIN = 2
+  OVER = 0,
+  IN_GAME = 1,
+  OVERTIME = 2,
+  WIN = 3,
 } GameState;
 
 //----------------------------------------------------------------------------------
@@ -79,12 +80,14 @@ const static char LABEL_TITLE[] = "--- [FRUITS CATCHER - Made with <3 and Raylib
 const static char LABEL_GAMEOVER[] = "GAME OVER";
 const static char LABEL_WIN[] = "YOU WIN";
 const static char LABEL_OVERTIME[] = "OVERTIME";
+const static char LABEL_RETRY[] = "RETRY?";
+const static char LABEL_CHOISE[] = "Y (Yes) / N (No)";
 
 const static int SCREEN_WIDTH = 640;
 const static int SCREEN_HEIGHT = 480;
 const static int GAME_FPS = 60;
-const static int MAX_TIME = 20;
-const static int MAX_SCORE = 30;
+const static int MAX_TIME = 12;
+const static int MAX_SCORE = 5;
 
 const static int PLAYER_HEIGHT = 8;
 const static int PLAYER_WIDTH = 60;
@@ -96,7 +99,8 @@ const static double ENEMY_BLUE_VELOCITY = 3.75;
 
 static int gameTime = 0;
 static int spawnedEnemies = 0;
-static int time = 0;
+static int timeStart = 0;
+static int timePassed = 0;
 static int wave = 0;
 static int score = 0;
 
@@ -117,6 +121,7 @@ static void EnemyActionCollect(int index);
 
 static void ScreenInit(void);
 static void GameOver(GameState);
+static void Restart(void);
 
 static void Init(void);
 static void GameLoop(void);
@@ -259,6 +264,19 @@ void GameOver(GameState state) {
   gamestate = state;
 }
 
+void Restart(void) {  // New Game
+  // Reset all the variables for a new game
+  gameTime = 0;
+  spawnedEnemies = 0;
+  timeStart = GetTime();
+  wave = 0;
+  score = 0;
+
+  PlayerActionSpawn();
+
+  gamestate = IN_GAME;
+}
+
 // Main Game (essentials) Functions ---------------------------------------------------------------
 void Init(void) {  // Initialization
   ScreenInit();
@@ -268,81 +286,98 @@ void Init(void) {  // Initialization
 }
 
 void GameLoop(void) {  // Main game loop
-  while( !WindowShouldClose() ) {  // Detect window close button or ESC key
-    // If a game condition ends the game, then, it should stops update everything
-    if ( gamestate == IN_GAME ) {
-      Update();
-    }
-
+  while( !WindowShouldClose() && gamestate != OVER ) {  // Detect window close button or ESC key
+    Update();
     Draw();
   }
 }
 
 void Update(void) {
-  // Declarations section
-  int deSpawnedEnemies = 0;
+  if ( gamestate == IN_GAME ) {
+    // Declarations section
+    int deSpawnedEnemies = 0;
 
-  // Time section
-  time = GetTime();
-  if ( time >= MAX_TIME ) {
-    GameOver(OVERTIME);
-    return;
-  }
-  
-  // Score section
-  if ( score >= MAX_SCORE) {
-    GameOver(WIN);
-    return;
-  }
+    // Time (Local) section
+    timePassed = floor(GetTime() - timeStart);
+    if ( timePassed >= MAX_TIME ) {
+      GameOver(OVERTIME);
+      return;
+    }
+    
+    // Score section
+    if ( score >= MAX_SCORE) {
+      GameOver(WIN);
+      return;
+    }
 
-  // Everything else
-  gameTime++;
+    // Everything else
+    gameTime++;
 
-  // Player ---------------------------------------------------------------
-  PlayerActionMove();
+    // Player ---------------------------------------------------------------
+    PlayerActionMove();
 
-  // Enemies --------------------------------------------------------------
-  for (
-    int i = 0, j = 0;
-    j < spawnedEnemies && i < MAX_ENEMIES_ON_SCREEN;
-    i++
-  ) {
-    if (enemies[i].spawned) {
-      // Increment the counter
-      j++;
+    // Enemies --------------------------------------------------------------
+    for (
+      int i = 0, j = 0;
+      j < spawnedEnemies && i < MAX_ENEMIES_ON_SCREEN;
+      i++
+    ) {
+      if (enemies[i].spawned) {
+        // Increment the counter
+        j++;
 
-      // Enemies fall
-      if ( !fmod(gameTime, enemies[i].ttm) ) {
-        if ( EnemyActionFall(i) ) {
+        // Enemies fall
+        if ( !fmod(gameTime, enemies[i].ttm) ) {
+          if ( EnemyActionFall(i) ) {
+            deSpawnedEnemies++;
+            continue;
+          }
+        }
+
+        // Other actions...
+        // TODO
+
+        // Detect Collisions
+        if ( CheckCollisionRecs(player.rect, enemies[i].rect) ) {
+          EnemyActionCollect(i);
           deSpawnedEnemies++;
           continue;
         }
       }
-
-      // Other actions...
-      // TODO
-
-      // Detect Collisions
-      if ( CheckCollisionRecs(player.rect, enemies[i].rect) ) {
-        EnemyActionCollect(i);
-        deSpawnedEnemies++;
-        continue;
-      }
     }
-  }
 
-  if (  // Enemies spawn (for now, only blue rectangles :D)
-      spawnedEnemies < MAX_ENEMIES_ON_SCREEN
-      && !fmod(gameTime, ENEMY_BLUE_TTS)
-    ) {
-      EnemyActionSpawn( BASE );
-      spawnedEnemies++;
-  }
+    if (  // Enemies spawn (for now, only blue rectangles :D)
+        spawnedEnemies < MAX_ENEMIES_ON_SCREEN
+        && !fmod(gameTime, ENEMY_BLUE_TTS)
+      ) {
+        EnemyActionSpawn( BASE );
+        spawnedEnemies++;
+    }
 
-  spawnedEnemies -= deSpawnedEnemies;
+    spawnedEnemies -= deSpawnedEnemies;
+  } else {
+
+    if (
+      // End the game
+      IsKeyDown(KEY_N)
+      ) {
+      gamestate = OVER;
+    } else if (
+      // Start a new game
+      IsKeyDown(KEY_Y)
+      ) {
+      Restart();
+    }
+  
+  }
 }
 
 void Draw(void) {
+  // If something ends the game, it should stops drawing things
+  if ( gamestate == OVER ) {
+    return;
+  }
+
   BeginDrawing();
 
     ClearBackground( screen.background );
@@ -350,7 +385,7 @@ void Draw(void) {
     // Info -----------------------------------------------------------------
     DrawRectangleRec( screen.infoBoxRect, screen.infoBoxColor );
     DrawText(
-      TextFormat("time %i", time),
+      TextFormat("time %i", timePassed),
       screen.infoTimePos.x, screen.infoTimePos.y,
       screen.textSize, screen.textColor
     );
@@ -388,7 +423,7 @@ void Draw(void) {
           LABEL_WIN,
           ( screen.size.x - MeasureText(LABEL_WIN, screen.textSize) ) / 2,
           ( screen.size.y - screen.textSize ) / 2,
-          screen.textSize, BLACK
+          screen.textSize, LIME
         );
         break;
       
@@ -397,13 +432,13 @@ void Draw(void) {
           LABEL_GAMEOVER,
           ( screen.size.x - MeasureText(LABEL_GAMEOVER, screen.textSize) ) / 2,
           ( screen.size.y - screen.textSize ) / 2,
-          screen.textSize, BLACK
+          screen.textSize, screen.textColor
         );
         DrawText(
           LABEL_OVERTIME,
           ( screen.size.x - MeasureText(LABEL_OVERTIME, screen.textSize) ) / 2,
-          ( screen.size.y + screen.textSize ) / 2,
-          screen.textSize, BLACK
+          ( screen.size.y + screen.textSize * 2 ) / 2,
+          screen.textSize, RED
         );
         break;
 
@@ -413,9 +448,25 @@ void Draw(void) {
           LABEL_GAMEOVER,
           ( screen.size.x - MeasureText(LABEL_GAMEOVER, screen.textSize) ) / 2,
           ( screen.size.y - screen.textSize ) / 2,
-          screen.textSize, BLACK
+          screen.textSize, screen.textColor
         );
         break;
+    }
+
+    if ( gamestate != IN_GAME ) {
+      // Retry (?)
+      DrawText(
+        LABEL_RETRY,
+        ( screen.size.x - MeasureText(LABEL_RETRY, screen.textSize) ) / 2,
+        screen.size.y - screen.textSize * 4,
+        screen.textSize, GOLD
+      );
+      DrawText(
+        LABEL_CHOISE,
+        ( screen.size.x - MeasureText(LABEL_CHOISE, screen.textSize) ) / 2,
+        screen.size.y - screen.textSize * 2.5,
+        screen.textSize, BLACK
+      );
     }
 
   EndDrawing();
