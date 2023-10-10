@@ -12,22 +12,27 @@
 ********************************************************************************************/
 
 #include <raylib.h>
+
+#define RAYGUI_IMPLEMENTATION
+#include <lib/raygui.h>
+#undef RAYGUI_IMPLEMENTATION  // Avoid including raygui implementation again
+
 #include <stdlib.h>
 #include <math.h>
 
 //----------------------------------------------------------------------------------
 // Macro Definition
 //----------------------------------------------------------------------------------
-#define MAX_ENEMIES_ON_SCREEN 10
+#define MAX_ENEMIES_ON_SCREEN 25
 #define ENEMY_BLUE_TTS 5  // Time To Spawn
 
 //----------------------------------------------------------------------------------
 // Enums Definition
 //----------------------------------------------------------------------------------
 typedef enum {
-  BASE = 1,
-  ADVANCED = 2,
-  BOSS = 3
+  BLUE_APPLE = 1,
+  GREEN_BANANA = 2,
+  RED_LEMON = 3
 } EnemyType;
 
 typedef enum {
@@ -86,8 +91,8 @@ const static char LABEL_CHOISE[] = "Y (Yes) / N (No)";
 const static int SCREEN_WIDTH = 640;
 const static int SCREEN_HEIGHT = 480;
 const static int GAME_FPS = 60;
-const static int MAX_TIME = 12;
-const static int MAX_SCORE = 5;
+const static int MAX_TIME = 30;
+const static int MAX_SCORE = 110;
 
 const static int PLAYER_HEIGHT = 8;
 const static int PLAYER_WIDTH = 60;
@@ -184,7 +189,7 @@ void PlayerActionMove(void) {
 void EnemyActionSpawn(EnemyType type) {
   for (int i = 0; i < MAX_ENEMIES_ON_SCREEN; i++) {
     if (!enemies[i].spawned) {
-      if (type == BASE) {
+      if (type == BLUE_APPLE) {
         // TODO Play animation "Spawn Blue"
         int posX = GetRandomValue( screen.padding.y, screen.size.x - ENEMY_BLUE_WIDTH - screen.padding.y );
 
@@ -350,7 +355,7 @@ void Update(void) {
         spawnedEnemies < MAX_ENEMIES_ON_SCREEN
         && !fmod(gameTime, ENEMY_BLUE_TTS)
       ) {
-        EnemyActionSpawn( BASE );
+        EnemyActionSpawn( BLUE_APPLE );
         spawnedEnemies++;
     }
 
