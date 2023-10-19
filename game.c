@@ -17,69 +17,20 @@
 #include <lib/raygui.h>
 #undef RAYGUI_IMPLEMENTATION  // Avoid including raygui implementation again
 
+#include "lib/enum.h"
+#include "lib/struct.h"
+
 #include <stdlib.h>
 #include <math.h>
 
-//----------------------------------------------------------------------------------
-// Macro Definition
-//----------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------
+// Macros Definition
+//------------------------------------------------------------------------------------
 #define MAX_ENEMIES_ON_SCREEN 25
 #define ENEMY_BLUE_TTS 5  // Time To Spawn
 
-//----------------------------------------------------------------------------------
-// Enums Definition
-//----------------------------------------------------------------------------------
-typedef enum {
-  BLUE_APPLE = 1,
-  GREEN_BANANA = 2,
-  RED_LEMON = 3
-} EnemyType;
-
-typedef enum {
-  OVER = 0,
-  IN_GAME = 1,
-  OVERTIME = 2,
-  WIN = 3,
-} GameState;
-
-//----------------------------------------------------------------------------------
-// Types and Structures Definition
-//----------------------------------------------------------------------------------
-typedef struct {
-  Vector2 size;
-  Vector3 padding;
-  Color background;
-
-  int textSize;
-  Color textColor;
-
-  Rectangle infoBoxRect;
-  Color infoBoxColor;
-
-  Vector2 infoTimePos;
-  Vector2 infoWavePos;
-  Vector2 infoScorePos;
-} ScreenInfo;
-
-typedef struct {
-  double velocity;
-
-  Rectangle rect;
-  Color color;
-} Player;
-
-typedef struct {
-  double ttm;
-  double velocity;
-  bool spawned;
-
-  EnemyType type;
-  Rectangle rect;
-  Color color;
-} Enemy;
-
 //------------------------------------------------------------------------------------
-// Global Variables Declaration
+// Global Labels Declaration
 //------------------------------------------------------------------------------------
 const static char LABEL_TITLE[] = "--- [FRUITS CATCHER - Made with <3 and Raylib] ---";
 const static char LABEL_GAMEOVER[] = "GAME OVER";
@@ -88,20 +39,27 @@ const static char LABEL_OVERTIME[] = "OVERTIME";
 const static char LABEL_RETRY[] = "RETRY?";
 const static char LABEL_CHOISE[] = "Y (Yes) / N (No)";
 
+//------------------------------------------------------------------------------------
+// Global Constants Declaration
+//------------------------------------------------------------------------------------
 const static int SCREEN_WIDTH = 640;
 const static int SCREEN_HEIGHT = 480;
+const static Color SCREEN_COLOR = RAYWHITE;
+
 const static int GAME_FPS = 60;
 const static int MAX_TIME = 30;
-const static int MAX_SCORE = 110;
+const static int MAX_SCORE = 10;
 
-const static int PLAYER_HEIGHT = 8;
-const static int PLAYER_WIDTH = 60;
+const static Vector2 PLAYER_DIMENSION = { 57, 64 };
+const static int PLAYER_STARTING_LIVES = 3;
 
-const static int ENEMY_BLUE_HEIGHT = 28;
-const static int ENEMY_BLUE_WIDTH = 15;
-const static double ENEMY_BLUE_TTM = 0.5;  // Time to Mode
+const static Vector2 COLLECTABLES_DIMENSION = { 32, 32 };
+const static double ENEMY_BLUE_TTM = 0.5;
 const static double ENEMY_BLUE_VELOCITY = 3.75;
 
+//------------------------------------------------------------------------------------
+// Global Variables Declaration
+//------------------------------------------------------------------------------------
 static int gameTime = 0;
 static int spawnedEnemies = 0;
 static int timeStart = 0;
@@ -109,8 +67,12 @@ static int timePassed = 0;
 static int wave = 0;
 static int score = 0;
 
-static GameState gamestate = IN_GAME;
-static ScreenInfo screen = { 0 };
+static Font font = { 0 };
+static Texture2D collectables_texture = { 0 };
+static Texture2D players_texture = { 0 };
+
+static GameState gamestate = IN_MENU;
+static WindowDescription window = { 0 };
 static Player player = { 0 };
 static Enemy enemies[MAX_ENEMIES_ON_SCREEN] = { 0 };
 
@@ -120,11 +82,11 @@ static Enemy enemies[MAX_ENEMIES_ON_SCREEN] = { 0 };
 static void PlayerActionSpawn(void);
 static void PlayerActionMove(void);
 
-static void EnemyActionSpawn(EnemyType type);
+static void EnemyActionSpawn(Collectables type);
 static bool EnemyActionFall(int index);
 static void EnemyActionCollect(int index);
 
-static void ScreenInit(void);
+static void InitWindowDescription(void);
 static void GameOver(GameState);
 static void Restart(void);
 
@@ -143,12 +105,12 @@ int main(void) {
 
     // Main game loop
     GameLoop();
-
-    // De-Initialization
-    CloseWindow();    // Close window and OpenGL context
     
     // Free all the previous allocated memory
     Unload();
+
+    // De-Initialization
+    CloseWindow();    // Close window and OpenGL context
 
     return 0;
 }
@@ -160,11 +122,12 @@ int main(void) {
 // Player Functions ------------------------------------------------------------------
 void PlayerActionSpawn(void) {
   // TODO Play animation "Spawn Player"
-  player.rect = (Rectangle) {
-    screen.size.x / 2 - PLAYER_WIDTH / 2,
-    screen.size.y - PLAYER_HEIGHT - screen.padding.z,
-    PLAYER_WIDTH, PLAYER_HEIGHT
-  };
+  float pX = window.GameViewRect.width / 2 - PLAYER_DIMENSION.x;
+  float pY = (window.GameViewRect.y + window.GameViewRect.height) -
+    (PLAYER_DIMENSION.y + window.GameViewBorderSize + window.GameViewDeathLine);
+
+  player.rect = (Rectangle) { pX, pY, PLAYER_DIMENSION.x, PLAYER_DIMENSION.y };
+  player.lives = PLAYER_STARTING_LIVES;
   player.velocity = 4;
   player.color = RED;
 }
@@ -172,31 +135,32 @@ void PlayerActionSpawn(void) {
 void PlayerActionMove(void) {
   if (
       (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))
-      && player.rect.x > screen.padding.y
+      && player.rect.x > window.GameViewBorderSize + window.GameViewLRPadding
     ) {
     player.rect.x -= player.velocity;
   }
 
   if (
       (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT))
-      && player.rect.x < screen.size.x - player.rect.width - screen.padding.y
+      && player.rect.x < (window.GameViewRect.width - window.GameViewLRPadding) - player.rect.width
     ) {
     player.rect.x += player.velocity;
   }
 }
 
 // Enemy (main) Functions -------------------------------------------------------------------
-void EnemyActionSpawn(EnemyType type) {
+void EnemyActionSpawn(Collectables type) {
   for (int i = 0; i < MAX_ENEMIES_ON_SCREEN; i++) {
     if (!enemies[i].spawned) {
-      if (type == BLUE_APPLE) {
+      if (type == CARROT) {
         // TODO Play animation "Spawn Blue"
-        int posX = GetRandomValue( screen.padding.y, screen.size.x - ENEMY_BLUE_WIDTH - screen.padding.y );
+        int eX = GetRandomValue(
+          window.GameViewRect.y + window.GameViewLRPadding,
+          window.GameViewRect.width - (COLLECTABLES_DIMENSION.x + window.GameViewLRPadding) 
+        );
+        int eY = window.GameViewRect.y + window.GameViewBorderSize;
 
-        enemies[i].rect = (Rectangle) {
-          posX, screen.padding.x,
-          ENEMY_BLUE_WIDTH, ENEMY_BLUE_HEIGHT
-        };
+        enemies[i].rect = (Rectangle) { eX, eY, COLLECTABLES_DIMENSION.x, COLLECTABLES_DIMENSION.y };
         enemies[i].ttm = ENEMY_BLUE_TTM;
         enemies[i].velocity = ENEMY_BLUE_VELOCITY;
         enemies[i].color = BLUE;
@@ -212,7 +176,7 @@ void EnemyActionSpawn(EnemyType type) {
 bool EnemyActionFall(int index) {
   if (
     enemies[index].rect.y <
-    screen.size.y - screen.padding.z - enemies[index].rect.height
+    ((window.GameViewRect.y + window.GameViewRect.height) - window.GameViewDeathLine) - enemies[index].rect.height
   ) {
     // TODO Play animation "Fall"
     enemies[index].rect.y += enemies[index].velocity;
@@ -232,24 +196,29 @@ void EnemyActionCollect(int index) {
 }
 
 // Main Game (tools) Functions ---------------------------------------------------------------
-void ScreenInit(void) {
-  int infoBoxHeight = SCREEN_HEIGHT / 10;
-  int innerInfoWidth = SCREEN_WIDTH / 3;
-  int marginL = (innerInfoWidth / 100) * 3;
-  int marginT = infoBoxHeight / 4;
+void InitWindowDescription(void) {
+  int HUDTopHeight = SCREEN_HEIGHT / 10;
+  int HUDBotHeight = SCREEN_HEIGHT / 12;
+  int GameViewHeight = SCREEN_HEIGHT - (HUDTopHeight + HUDBotHeight);
 
-  screen.size = (Vector2) { SCREEN_WIDTH, SCREEN_HEIGHT };
-  screen.padding = (Vector3) { infoBoxHeight, SCREEN_WIDTH / 100, (SCREEN_HEIGHT / 100) * 3 };  // top, left/right, bottom
-  screen.background = RAYWHITE;
+  window.fontSize = 24;
+  window.fontColor = BLACK;
+  window.HUDBorderSize = 2;
 
-  screen.textSize = infoBoxHeight / 2;
-  screen.textColor = BLACK;
+  window.HUDTopRect = (Rectangle) { 0, 0, SCREEN_WIDTH, HUDTopHeight };
+  window.HUDTopColor = GOLD;
+  window.HUDTopBorderColor = DARKPURPLE;
 
-  screen.infoBoxRect = (Rectangle) { 0, 0, SCREEN_WIDTH, infoBoxHeight };
-  screen.infoTimePos = (Vector2) { marginL, marginT };
-  screen.infoWavePos = (Vector2) { innerInfoWidth + marginL, marginT };
-  screen.infoScorePos = (Vector2) { innerInfoWidth * 2 + marginL, marginT };
-  screen.infoBoxColor = ORANGE;
+  window.GameViewRect = (Rectangle) { 0, HUDTopHeight, SCREEN_WIDTH, SCREEN_HEIGHT - (HUDTopHeight + HUDBotHeight) };
+  window.GameViewColor = SCREEN_COLOR;
+  window.GameViewDeathLine = GameViewHeight / 100;
+  window.GameViewLRPadding = PLAYER_DIMENSION.x / 10;
+  window.GameViewBorderSize = 0;
+  window.GameViewBorderColor = BLACK;
+
+  window.HUDBotRect = (Rectangle) { 0, HUDTopHeight + GameViewHeight, SCREEN_WIDTH, HUDBotHeight };
+  window.HUDBotColor = GOLD;
+  window.HUDBotBorderColor = DARKPURPLE;
 }
 
 void GameOver(GameState state) {
@@ -284,10 +253,23 @@ void Restart(void) {  // New Game
 
 // Main Game (essentials) Functions ---------------------------------------------------------------
 void Init(void) {  // Initialization
-  ScreenInit();
-  PlayerActionSpawn();
+  // Window
   InitWindow( SCREEN_WIDTH, SCREEN_HEIGHT, LABEL_TITLE );
   SetTargetFPS( GAME_FPS );  // Set our game to run at 60 frames-per-second
+  InitWindowDescription();
+
+  // Font
+  font = LoadFont("./fonts/Handmade.otf");
+  GuiSetFont(font);
+  GuiSetStyle(DEFAULT, TEXT_SIZE, window.fontSize);
+  GuiSetStyle(DEFAULT, BORDER_WIDTH, window.HUDBorderSize + window.GameViewLRPadding);
+
+  // Textures
+  collectables_texture = LoadTexture("./sprite/collectables.png");
+  players_texture = LoadTexture("./sprite/players.png");
+  
+  // Player
+  PlayerActionSpawn();
 }
 
 void GameLoop(void) {  // Main game loop
@@ -355,13 +337,12 @@ void Update(void) {
         spawnedEnemies < MAX_ENEMIES_ON_SCREEN
         && !fmod(gameTime, ENEMY_BLUE_TTS)
       ) {
-        EnemyActionSpawn( BLUE_APPLE );
+        EnemyActionSpawn( CARROT );
         spawnedEnemies++;
     }
 
     spawnedEnemies -= deSpawnedEnemies;
   } else {
-
     if (
       // End the game
       IsKeyDown(KEY_N)
@@ -373,7 +354,6 @@ void Update(void) {
       ) {
       Restart();
     }
-  
   }
 }
 
@@ -385,65 +365,112 @@ void Draw(void) {
 
   BeginDrawing();
 
-    ClearBackground( screen.background );
+    ClearBackground( SCREEN_COLOR );
 
-    // Info -----------------------------------------------------------------
-    DrawRectangleRec( screen.infoBoxRect, screen.infoBoxColor );
-    DrawText(
-      TextFormat("time %i", timePassed),
-      screen.infoTimePos.x, screen.infoTimePos.y,
-      screen.textSize, screen.textColor
+    // HUD (Top) -----------------------------------------------------------------
+    GuiDrawRectangle(
+      window.HUDTopRect, window.HUDBorderSize,
+      window.HUDTopBorderColor, window.HUDTopColor
     );
-    DrawText(
-      TextFormat("wave %i", wave),
-      screen.infoWavePos.x, screen.infoWavePos.y,
-      screen.textSize, screen.textColor
-    );
-    DrawText(
-      TextFormat("score %i", score),
-      screen.infoScorePos.x, screen.infoScorePos.y,
-      screen.textSize, screen.textColor
-    );
+      GuiDrawText(
+        TextFormat("Time %i", timePassed),
+        GetTextBounds(DEFAULT, window.HUDTopRect),
+        TEXT_ALIGN_LEFT, window.fontColor
+      );
+      GuiDrawText(
+        TextFormat("Wave %i", wave),
+        GetTextBounds(DEFAULT, window.HUDTopRect),
+        TEXT_ALIGN_CENTER, window.fontColor
+      );
+      GuiDrawText(
+        TextFormat("Score %i", score),
+        GetTextBounds(DEFAULT, window.HUDTopRect),
+        TEXT_ALIGN_RIGHT, window.fontColor
+      );
 
     switch ( gamestate ) {
-      case IN_GAME:
-        // Player ---------------------------------------------------------------
-        DrawRectangleRec( player.rect, player.color );
+      /*case IN_MENU:
+        GuiDrawRectangle(
+          screen.infoBoxRect, screen.borderSize,
+          screen.infoBoxBorderColor, screen.infoBoxColor
+        );
+        GuiDrawText(
+          TextFormat("time %i", timePassed),
+          GetTextBounds(DEFAULT, screen.infoBoxRect),
+          GuiGetStyle(DEFAULT, TEXT_ALIGNMENT),
+          BLACK
+        );
+        break;*/
 
-        // Enemies --------------------------------------------------------------
-        for (
-          int i = 0, j = 0;
-          j < spawnedEnemies && i < MAX_ENEMIES_ON_SCREEN;
-          i++
-        ) {
-          if (enemies[i].spawned) {
-            DrawRectangleRec( enemies[i].rect, enemies[i].color );
-            j++;
+      case IN_GAME:
+        // GameView -------------------------------------------------------------
+        GuiDrawRectangle(
+          window.GameViewRect, window.GameViewBorderSize,
+          window.GameViewBorderColor, window.GameViewColor
+        );
+          // Enemies --------------------------------------------------------------
+          for (
+            int i = 0, j = 0;
+            j < spawnedEnemies && i < MAX_ENEMIES_ON_SCREEN;
+            i++
+          ) {
+            if (enemies[i].spawned) {
+              //DrawRectangleRec( enemies[i].rect, enemies[i].color );
+              DrawTexturePro(
+                collectables_texture,
+                (Rectangle) { 96.0f, 0.0f, 32.0f, 32.0f },
+                enemies[i].rect,
+                (Vector2) { 0.0f, 0.0f },
+                0.0f,
+                RAYWHITE
+              );
+              j++;
+            }
           }
-        }
+
+          // Player ---------------------------------------------------------------
+          DrawTexturePro(
+            players_texture,
+            (Rectangle) { 0.0f, 0.0f, 57.0f, 64.0f },
+            player.rect,
+            (Vector2) { 0.0f, 0.0f },
+            0.0f,
+            RAYWHITE
+          );
+
+        // HUD (Bot) -------------------------------------------------------------
+        GuiDrawRectangle(
+          window.HUDBotRect, window.HUDBorderSize,
+          window.HUDBotBorderColor, window.HUDBotColor
+        );
+          GuiDrawText(
+            TextFormat("Lives %i", player.lives),
+            GetTextBounds(DEFAULT, window.HUDBotRect),
+            TEXT_ALIGN_LEFT, window.fontColor
+          );
         break;
 
       case WIN:
         DrawText(
           LABEL_WIN,
-          ( screen.size.x - MeasureText(LABEL_WIN, screen.textSize) ) / 2,
-          ( screen.size.y - screen.textSize ) / 2,
-          screen.textSize, LIME
+          ( SCREEN_WIDTH - MeasureText(LABEL_WIN, window.fontSize) ) / 2,
+          ( SCREEN_HEIGHT - window.fontSize ) / 2,
+          window.fontSize, LIME
         );
         break;
       
       case OVERTIME:
         DrawText(
           LABEL_GAMEOVER,
-          ( screen.size.x - MeasureText(LABEL_GAMEOVER, screen.textSize) ) / 2,
-          ( screen.size.y - screen.textSize ) / 2,
-          screen.textSize, screen.textColor
+          ( SCREEN_WIDTH - MeasureText(LABEL_GAMEOVER, window.fontSize) ) / 2,
+          ( SCREEN_HEIGHT - window.fontSize ) / 2,
+          window.fontSize, window.fontColor
         );
         DrawText(
           LABEL_OVERTIME,
-          ( screen.size.x - MeasureText(LABEL_OVERTIME, screen.textSize) ) / 2,
-          ( screen.size.y + screen.textSize * 2 ) / 2,
-          screen.textSize, RED
+          ( SCREEN_WIDTH - MeasureText(LABEL_OVERTIME, window.fontSize) ) / 2,
+          ( SCREEN_HEIGHT + window.fontSize * 2 ) / 2,
+          window.fontSize, RED
         );
         break;
 
@@ -451,9 +478,9 @@ void Draw(void) {
         // Game Over (generic)
         DrawText(
           LABEL_GAMEOVER,
-          ( screen.size.x - MeasureText(LABEL_GAMEOVER, screen.textSize) ) / 2,
-          ( screen.size.y - screen.textSize ) / 2,
-          screen.textSize, screen.textColor
+          ( SCREEN_WIDTH - MeasureText(LABEL_GAMEOVER, window.fontSize) ) / 2,
+          ( SCREEN_HEIGHT - window.fontSize ) / 2,
+          window.fontSize, window.fontColor
         );
         break;
     }
@@ -462,15 +489,15 @@ void Draw(void) {
       // Retry (?)
       DrawText(
         LABEL_RETRY,
-        ( screen.size.x - MeasureText(LABEL_RETRY, screen.textSize) ) / 2,
-        screen.size.y - screen.textSize * 4,
-        screen.textSize, GOLD
+        ( SCREEN_WIDTH - MeasureText(LABEL_RETRY, window.fontSize) ) / 2,
+        SCREEN_HEIGHT - window.fontSize * 4,
+        window.fontSize, GOLD
       );
       DrawText(
         LABEL_CHOISE,
-        ( screen.size.x - MeasureText(LABEL_CHOISE, screen.textSize) ) / 2,
-        screen.size.y - screen.textSize * 2.5,
-        screen.textSize, BLACK
+        ( SCREEN_WIDTH - MeasureText(LABEL_CHOISE, window.fontSize) ) / 2,
+        SCREEN_HEIGHT - window.fontSize * 2.5,
+        window.fontSize, BLACK
       );
     }
 
@@ -479,4 +506,7 @@ void Draw(void) {
 
 void Unload(void) {  // Unload game variables
   // :Unload here all dynamic loaded data (textures, sounds, models...)
+  UnloadFont(font);
+  UnloadTexture(collectables_texture);
+  UnloadTexture(players_texture);
 }
